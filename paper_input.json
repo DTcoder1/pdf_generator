@@ -1,0 +1,203 @@
+{
+  "metadata": {
+    "title": "Transparent & Governed NLP at Scale: A Practical Blueprint for Evaluation, Rationale Capture, and Risk Controls",
+    "authors": [
+      {"name": "Dr. Evelyn Reed", "institution": "Institute of Advanced AI", "contact": "e.reed@iaai.edu"},
+      {"name": "Dr. Samuel Chen", "institution": "Center for Digital Humanities", "contact": "sam.chen@cdh.org"},
+      {"name": "Maria Garcia", "institution": "University of Technology", "contact": "m.garcia@utech.edu"},
+      {"name": "Dr. Priya Natarajan", "institution": "National Data Science Lab", "contact": "priya.n@ndsl.gov"},
+      {"name": "Ahmed El-Sayed", "institution": "Arabian Institute of Computing", "contact": "ahmed.el@aic.ac"},
+      {"name": "Jules Fournier", "institution": "École Européenne d’Informatique", "contact": "j.fournier@eei.fr"},
+      {"name": "Dr. Linh Tran", "institution": "Pacific Machine Intelligence Center", "contact": "linh.tran@pmic.org"},
+      {"name": "Hannah O’Neill", "institution": "Atlantic University", "contact": "h.oneill@atlanticu.edu"},
+      {"name": "Diego Alvarez", "institution": "Instituto de Sistemas Complejos", "contact": "d.alvarez@isc.cl"},
+      {"name": "Wei Zhang", "institution": "Shenzhen AI Collaborative", "contact": "weizhang@szaic.cn"},
+      {"name": "Dr. Lara Müller", "institution": "Technische Hochschule Rhein-Main", "contact": "lara.mueller@thr.de"},
+      {"name": "Aisha Khan", "institution": "South Asia Digital Lab", "contact": "aisha.khan@sadl.in"},
+      {"name": "Tomás Ribeiro", "institution": "Universidade Atlântica de Dados", "contact": "t.ribeiro@uad.pt"},
+      {"name": "Nora Al-Harbi", "institution": "Gulf Institute of AI Governance", "contact": "nora.alharbi@giag.org"},
+      {"name": "Kenji Sato", "institution": "Tokyo Center for Responsible ML", "contact": "kenji.sato@tcrm.jp"}
+    ],
+    "summary": "We present an end-to-end blueprint for deploying transparent NLP systems under real-world constraints. The framework couples drift-aware evaluation, rationale capture with evidence linking, and a governance checklist that operationalizes risk controls across data lineage, safety testing, change management, and rollback. We benchmark across five domains (civic discourse, healthcare notes, finance, education, and cultural heritage) and four model families with both in-domain and out-of-domain partitions. The approach yields improved calibration, lower hallucination rates, and clearer failure boundaries while maintaining reproducibility through open artifacts. We discuss cost/latency trade-offs, human factors, and practical pathways for adoption in regulated settings.",
+    "tags": [
+      "NLP", "Evaluation", "Calibration", "Rationales", "Auditability",
+      "Governance", "Risk Controls", "RAG", "OOD Robustness", "PII Redaction",
+      "Uncertainty", "MLOps", "Reproducibility"
+    ],
+    "publication_info": {
+      "journal": "Journal of Computational Methods & Society",
+      "volume": 12,
+      "issue": 3,
+      "date": "August 2025",
+      "issn": "2049-1230"
+    }
+  },
+  "body_content": [
+    {
+      "type": "section",
+      "title": "Introduction",
+      "content": [
+        "Large-scale language models have accelerated adoption in knowledge work, but their deployment raises demands for transparency, safety, and governance across changing data distributions [1, 3, 9]. Early milestones in statistical NLP and attention mechanisms enabled compositional reasoning but left open questions about legibility and auditability in production [3, 5–7]. We argue for a practical blueprint that joins drift-aware evaluation, structured rationale capture, and explicit risk controls aligned with organizational processes [8, 11, 14].",
+        "This paper contributes: (i) an evaluation suite with time/topic drift splits and bootstrap confidence intervals; (ii) an evidence-linked rationale protocol to surface model grounds without exposing sensitive content; and (iii) a governance checklist mapping model capabilities to risk exposure, including red-team coverage, rollback, and data lineage [9, 10, 11, 20]."
+      ]
+    },
+    {
+      "type": "section",
+      "title": "Background & Related Work",
+      "content": [
+        "Foundational work on intelligence evaluation set criteria still echoed in modern benchmarks [1]. Formal syntax and probabilistic NLP established scalable text processing [2, 3], while topic models offered corpus-level structure [4]. Transformers unlocked long-range dependencies, enabling instruction-tuned few-shot behavior [5–7].",
+        "Trustworthy deployment literature emphasizes calibration, uncertainty estimation, and hallucination mitigation as pillars of reliability; governance standards increasingly codify these into operational requirements [8–12, 14]."
+      ]
+    },
+    
+    {
+      "type": "table",
+      "title": "Domain Datasets",
+      "placement": "inline",
+      "caption": "Table 1. Summary of domain datasets and partitions.",
+      "headers": ["Domain", "Languages", "ID Size", "OOD Size", "Notes"],
+      "rows": [
+        ["Civic Discourse", "EN", "120k", "40k", "Topic & time drift"],
+        ["Healthcare Notes", "EN", "85k", "28k", "De-identified; temporality tags"],
+        ["Finance", "EN", "64k", "22k", "Currency normalization"],
+        ["Education", "EN", "73k", "24k", "Rubric-aligned labels"],
+        ["Cultural Heritage", "EN+Multi (18)", "95k", "31k", "Multilingual NER"]
+      ]
+    },
+    {
+      "type": "section",
+      "title": "System Overview",
+      "content": [
+        "Our system comprises three layers. The evaluation layer builds drift-aware splits and computes macro/micro metrics alongside Expected Calibration Error (ECE) and reliability diagrams [9, 12]. The rationale layer captures structured explanations with links to evidence chunks, supporting partial audits without raw data exposure [8, 10]. The governance layer enforces policy artifacts: risk registers, content filters, incident runbooks, and rollback triggers [11, 14, 20].",
+        "We integrate retrieval augmentation selectively where evidence grounding improves factuality, balancing latency with answerability under distribution shift [6–7, 12, 19]."
+      ]
+    },
+    {
+      "type": "section",
+      "title": "Data & Preprocessing",
+      "content": [
+        "We construct datasets across five domains with hybrid partitioning: time-based drift (ID → OOD by recency) and topic shift (latent clusters) to emulate real-world change. Sensitive entities are normalized; PII is redacted with reversible placeholders for offline audits [11, 15].",
+        "Documents are segmented into passages for retrieval; annotations include stance/sentiment (civic), negation/temporality (clinical), monetary normalization (finance), rubric-aligned scoring (education), and multilingual named entities (cultural heritage) [3, 4, 9, 12]."
+      ]
+    },
+    {
+      "type": "section",
+      "title": "Methodology",
+      "content": [
+        "Evaluation follows stratified sampling with bootstrapped 95% CIs over five seeds. We report precision/recall/F1, AUROC, ECE, and evidence-overlap for factuality. Significance is assessed via paired bootstrap with Holm–Bonferroni correction [3, 9, 12, 13].",
+        "Rationales are captured as templated chains referencing evidence spans. To constrain leakage, we adopt template-bounded justifications and minimize reproduction of sensitive text [8, 10, 11]. Governance artifacts define entry/exit criteria for releases, red-team scope, and rollback thresholds [11, 14, 20]."
+      ]
+    },
+    {
+      "type": "section",
+      "title": "Model Families & Training",
+      "content": [
+        "We evaluate four families: encoder-only classifiers, encoder-decoder seq2seq, decoder-only instruction-tuned LMs, and retrieval-augmented variants. Hyperparameters and prompt templates are released for reproducibility [6–7, 12, 19].",
+        "Calibration is improved with temperature scaling and label-smoothing for classifiers, and with selective abstention policies for generative systems. Retrieval augmentation targets domains with sparse intrinsic knowledge but stable evidence stores [9, 12, 18, 19]."
+      ]
+    },
+    
+    {
+      "type": "table",
+      "title": "Ablation Study",
+      "placement": "fullwidth",
+      "caption": "Table 2. Full ablation across model families and settings (mean ± 95% CI).",
+      "headers": ["Model", "Params", "Domain", "F1", "AUROC", "ECE ↓", "Hallucination ↓"],
+      "rows": [
+        ["Encoder-only", "1.3B", "Civic", "79.2 ± 0.6", "0.91 ± 0.01", "0.082", "−19%"],
+        ["Encoder-decoder", "770M", "Healthcare", "76.5 ± 0.7", "0.88 ± 0.02", "0.095", "−18%"],
+        ["Decoder-only (instr.)", "7B", "Finance", "81.4 ± 0.5", "0.92 ± 0.01", "0.074", "−22%"],
+        ["RAG (decoder)", "7B", "Cultural", "83.1 ± 0.4", "0.94 ± 0.01", "0.068", "−27%"]
+      ]
+    },
+    {
+      "type": "section",
+      "title": "Experimental Setup",
+      "content": [
+        "Datasets: 5 domains × 2 partitions (ID/OOD) with time/topic drift. Training uses early stopping by OOD validation to avoid over-specialization to ID distributions. We run 5 seeds per configuration and report mean ± 95% CI [3, 9].",
+        "Infrastructure: experiments executed on mixed CPU/GPU pools with deterministic seeding, containerized environments, and artifact logging for full reproducibility [13, 16]."
+      ]
+    },
+    {
+      "type": "section",
+      "title": "Results",
+      "content": [
+        "Across domains, governance-guided training reduces hallucination by 18–27% relative to strong baselines, with ECE decreasing by 5–11 points on OOD. Retrieval-augmented models yield the largest factuality gains in civic discourse and cultural heritage, correlating with higher evidence overlap [9, 12, 18, 19].",
+        "Latency increases 8–12% due to retrieval and rationale capture; cost rises modestly but remains within operational budgets for most workloads [7, 12, 19]."
+      ]
+    },
+    {
+      "type": "section",
+      "title": "Ablation Studies",
+      "content": [
+        "Removing rationale capture degrades auditability and slightly worsens ECE (+1.8 pts) by eliminating structured self-checks. Disabling drift-aware splits inflates ID scores but harms OOD F1 (−3.4 avg) [9, 12, 14].",
+        "Retrieval tuning shows diminishing returns beyond top-k ≈ 8; excessive k increases latency without commensurate factuality gains [18–19]."
+      ]
+    },
+    {
+      "type": "section",
+      "title": "Error Analysis",
+      "content": [
+        "Residual errors cluster around ambiguous entity linking, clinical temporality, and low-resource multilingual names. Failures often coincide with out-of-taxonomy labels or noisy annotator guidelines [3, 12, 17].",
+        "Rationales reveal brittle heuristics—e.g., over-weighting headline terms in civic discourse—guiding targeted data augmentation and prompt edits [8, 10, 21]."
+      ]
+    },
+    {
+      "type": "section",
+      "title": "Ethics & Governance",
+      "content": [
+        "We adopt PII minimization, purpose limitation, and consent-aware processing. Red-team coverage includes prompt injection, jailbreaks, and bias probes on protected attributes. Incident playbooks define rollback and notification thresholds [11, 14, 20, 22].",
+        "We highlight annotator well-being, appeal channels for corrections, and public documentation of known limitations. Policy linting is automated in CI with periodic human review [11, 20, 22]."
+      ]
+    },
+    {
+      "type": "section",
+      "title": "Limitations & Future Work",
+      "content": [
+        "Serving cost and latency rise modestly; low-resource languages still lack sufficient gold evidence for robust factuality scoring. Checklists can drift without incentives; quarterly audits and ownership models are recommended [11, 14, 22].",
+        "Future work: tighter uncertainty-aware routing, multilingual expansion, and dataset governance primitives with verifiable lineage [12, 20–22]."
+      ]
+    },
+    {
+      "type": "section",
+      "title": "Conclusion",
+      "content": [
+        "A practical blueprint that couples drift-aware evaluation, rationale capture, and governance yields safer, clearer deployments with reproducible evidence. Our results suggest modest overheads can unlock outsized reliability gains in dynamic environments [9–12, 20]."
+      ]
+    },
+    {
+      "type": "section",
+      "title": "Appendix",
+      "content": [
+        "Appendix A: prompts, hyperparameters, reliability diagrams, and per-domain tables (F1, AUROC, ECE) with 95% CIs. Appendix B: governance checklist templates and example red-team coverage maps [11, 13, 20–21].",
+        "All artifacts (configs, seeds, and reports) are released for reproduction and audit training [13, 16, 21–22]."
+      ]
+    }
+  ],
+  "references": [
+    {"text": "Turing, A. M. (1950). Computing Machinery and Intelligence. Mind, 59(236), 433–460."},                 
+    {"text": "Chomsky, N. (1957). Syntactic Structures. Mouton de Gruyter."},                                  
+    {"text": "Manning, C. D., & Schütze, H. (1999). Foundations of Statistical Natural Language Processing. MIT Press."},
+    {"text": "Blei, D. M., Ng, A. Y., & Jordan, M. I. (2003). Latent Dirichlet Allocation. JMLR, 3, 993–1022."},
+    {"text": "Vaswani, A., et al. (2017). Attention Is All You Need. NeurIPS 30."},                             
+    {"text": "Devlin, J., Chang, M.-W., Lee, K., & Toutanova, K. (2019). BERT. NAACL."},                        
+    {"text": "Brown, T. B., et al. (2020). Language Models are Few-Shot Learners. NeurIPS 33."},             
+    {"text": "Ribeiro, M. T., et al. (2016). “Why Should I Trust You?” Explaining Classifiers. KDD."},          
+    {"text": "Guo, C., et al. (2017). On Calibration of Modern Neural Networks. ICML."},                        
+    {"text": "Narang, S., et al. (2022). Pathways and Responsible Scaling. arXiv:2204.02311."},            
+    {"text": "ISO/IEC JTC 1/SC 42. (2023). AI Risk Management & Governance Guidelines."},             
+    {"text": "Ji, Z., et al. (2023). Survey of Hallucination in NLG. TACL."},                                  
+    {"text": "Efron, B., & Tibshirani, R. (1993). An Introduction to the Bootstrap. Chapman & Hall."},       
+    {"text": "NIST (2023). AI Risk Management Framework (AI RMF 1.0)."},                                      
+    {"text": "Garfinkel, S., & Leiserson, C. (2019). PII: The Road to Minimization. CACM."},                      
+    {"text": "Pham, H., et al. (2021). End-to-End AutoML Reproducibility Tooling. SysML."},                    
+    {"text": "Sogaard, A. (2013). Part-of-Speech Tagging of Under-Resourced Languages. ACL."},            
+    {"text": "Lewis, P., et al. (2020). Retrieval-Augmented Generation. NeurIPS."},                    
+    {"text": "Karpukhin, V., et al. (2020). Dense Passage Retrieval. EMNLP."},                            
+    {"text": "ENISA (2024). Guidelines for AI Security Testing and Red Teaming."},                       
+    {"text": "Mitchell, M., et al. (2019). Model Cards for Model Reporting. FAT*."},                    
+    {"text": "Hendrycks, D., et al. (2021). Uncertainty-Aware Deep Learning. NeurIPS."},                        
+    {"text": "Lin, C.-Y. (2004). ROUGE: A Package for Automatic Evaluation of Summaries. ACL."},           
+    {"text": "Platt, J. (1999). Probabilistic Outputs for SVMs and Comparisons to Regularized Likelihood Methods. NIPS."} 
+  ]
+}

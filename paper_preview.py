@@ -15,6 +15,8 @@ from reportlab.platypus import (
     NextPageTemplate, PageBreak, FrameBreak,
     KeepTogether, CondPageBreak
 )
+from reportlab.platypus import PageTemplate, Frame
+import uuid
 
 # =========================================================
 #  Utilities
@@ -117,31 +119,31 @@ def build_author_table(authors, doc, styles):
 from reportlab.pdfbase.pdfmetrics import stringWidth
 
 def _measure_text_width(txt, font_name='Times-Roman', font_size=9):
-    # crude width estimate; Paragraph will wrap, this is only for initial col sizing
+    """Crude single-line width estimate for autosizing columns."""
     return stringWidth(str(txt), font_name, font_size)
 
-def _autosize_col_widths(headers, rows, max_width, base_font='Times-Roman', header_font='Times-Bold', font_size=9, min_col=36):
+def _autosize_col_widths(headers, rows, max_width,
+                         base_font='Times-Roman', header_font='Times-Bold',
+                         font_size=9, min_col=36):
     """
-    Compute preferred col widths from content, then scale to fit max_width.
-    min_col in points (36 = 0.5 inch) to avoid zero-width columns.
+    Compute preferred column widths from header+row content,
+    then scale to fit max_width and fix rounding drift so the
+    sum is EXACTLY max_width.
     """
     ncols = max(1, len(headers))
     desired = [0.0] * ncols
 
-    # include header widths
+    # header widths
     for j, h in enumerate(headers):
         desired[j] = max(desired[j], _measure_text_width(h, header_font, font_size))
 
-    # include body widths
+    # body widths
     for row in rows:
         for j in range(min(ncols, len(row))):
             desired[j] = max(desired[j], _measure_text_width(row[j], base_font, font_size))
 
-    # add padding per cell (left+right)
-    desired = [w + 8 for w in desired]  # matches LEFT/RIGHTPADDING=4 each
-
-    # clamp to minimums
-    desired = [max(min_col, w) for w in desired]
+    # padding (L+R = 8pt)
+    desired = [max(min_col, w + 8) for w in desired]
 
     total = sum(desired)
     if total <= 0:
@@ -151,43 +153,84 @@ def _autosize_col_widths(headers, rows, max_width, base_font='Times-Roman', head
     scale = min(1.0, max_width / total)
     widths = [w * scale for w in desired]
 
-    # numerical drift fix: ensure sum <= max_width
-    over = sum(widths) - max_width
-    if over > 0:
-        # shave a tiny amount proportionally
-        factor = (sum(widths) - over) / sum(widths)
-        widths = [w * factor for w in widths]
+    # fix tiny drift so sum == max_width exactly
+    delta = max_width - sum(widths)
+    if abs(delta) > 0.01:
+        widths[-1] += delta
 
     return widths
+
+def make_fullwidth_then_two_col_template(doc, top_height, *, gutter, onPage):
+    """
+    Create a PageTemplate with:
+      - top full-width frame of 'top_height'
+      - two columns below sharing the remaining height
+    """
+    template_id = f"FW_{uuid.uuid4().hex[:8]}"
+
+    # Geometry
+    full_w = doc.width
+    full_h = max(0, top_height)
+    below_h = max(0, doc.height - full_h)
+
+    # y-positions from bottom margin up
+    full_y = doc.bottomMargin + below_h
+    below_y = doc.bottomMargin
+
+    # Columns below
+    col_w = (doc.width - gutter) / 2.0
+    left_x = doc.leftMargin
+    right_x = doc.leftMargin + col_w + gutter
+
+    top_full = Frame(doc.leftMargin, full_y, full_w, full_h, id=f"{template_id}_top")
+    left_below = Frame(left_x, below_y, col_w, below_h, id=f"{template_id}_L")
+    right_below = Frame(right_x, below_y, col_w, below_h, id=f"{template_id}_R")
+
+    return PageTemplate(
+        id=template_id,
+        frames=[top_full, left_below, right_below],
+        onPage=onPage  # <- important so header/footer still renders
+    )
+
+def _measure_fullwidth_table_height(headers, rows, *, doc, styles, col_widths=None):
+    """Build the caption+table once, wrap at doc.width, and return (flow, total_height)."""
+    flow = make_table_flowables(
+        headers=headers, rows=rows, caption=None,  # caption measured separately
+        doc=doc, styles=styles, col_widths=col_widths, max_width=doc.width
+    )
+    # flow = [Paragraph(caption)?, Table]
+    # We'll create caption separately so we can measure both pieces.
+
+    # 1) a dummy caption (just to measure when caller has a string)
+    def make_caption(txt):
+        return Paragraph(txt, styles['TableCaption'])
+
+    def measure(flowables, max_w):
+        h_total = 0
+        for fl in flowables:
+            w, h = fl.wrap(max_w, 10**6)
+            h_total += h
+        return h_total
+
+    return flow, measure
 
 def make_table_flowables(*,
     headers, rows, caption=None, doc=None, styles=None,
     col_widths=None, zebra=True, max_width=None, wrap_mode='normal'
 ):
-    """
-    Build a styled ReportLab Table with optional caption.
-    - max_width: total width to distribute across columns (column width or page width)
-    - wrap_mode: 'normal' (word wrap) or 'cjk' (aggressive char wrap)
-    """
     assert styles is not None and doc is not None
 
-    # determine available width
     total_w = max_width if max_width is not None else doc.width
 
-    # convert every cell to Paragraph so it wraps
     header_cells = [Paragraph(str(h), styles['TableHeaderCell']) for h in headers]
-    body_cells = [
-        [Paragraph(str(c), styles['TableCell']) for c in row]
-        for row in rows
-    ]
+    body_cells = [[Paragraph(str(c), styles['TableCell']) for c in row] for row in rows]
 
-    # autosize if not provided
     if col_widths is None:
         col_widths = _autosize_col_widths(headers, rows, total_w)
 
     data = [header_cells] + body_cells
-    tbl = Table(data, colWidths=col_widths, hAlign='CENTER')
 
+    tbl = Table(data, colWidths=col_widths, hAlign='CENTER', repeatRows=1)
     base = [
         ('GRID', (0, 0), (-1, -1), 0.25, colors.HexColor('#E5E7EB')),
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#DBEAFE')),
@@ -198,18 +241,20 @@ def make_table_flowables(*,
         ('RIGHTPADDING', (0, 0), (-1, -1), 4),
         ('TOPPADDING', (0, 0), (-1, -1), 3),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
-        # body alignment left by default (header centered)
         ('ALIGN', (0, 1), (-1, -1), 'LEFT'),
+
+        # keep individual cells from splitting across pages
+        ('SPLITINROW', (0, 0), (-1, -1), 0),
+        # If you ever enable table-level NOSPLIT, remember: no 4th arg!
+        # ('NOSPLIT', (0, 0), (-1, -1)),
     ]
 
-    # optional: aggressive wrap for long unspaced strings
-    if wrap_mode.lower() == 'cjk':
+    if wrap_mode and wrap_mode.lower() == 'cjk':
         base.append(('WORDWRAP', (0, 0), (-1, -1), 'CJK'))
 
     if zebra and rows:
-        for r in range(1, len(data)):
-            if r % 2 == 1:
-                base.append(('BACKGROUND', (0, r), (-1, r), colors.HexColor('#F3F4F6')))
+        base.append(('ROWBACKGROUNDS', (0, 1), (-1, -1),
+                     [colors.HexColor('#F3F4F6'), colors.white]))
 
     tbl.setStyle(TableStyle(base))
 
@@ -219,7 +264,105 @@ def make_table_flowables(*,
     out.append(tbl)
     return out
 
+def measure_fullwidth_table_group(*,
+    headers, rows, caption_text, doc, styles, col_widths=None,
+    spacer_after=0.06 * inch
+):
+    caption_para = Paragraph(caption_text, styles['TableCaption'])
+    table_flow = make_table_flowables(
+        headers=headers, rows=rows, caption=None,
+        doc=doc, styles=styles, col_widths=col_widths, max_width=doc.width
+    )
 
+    # ✅ Correct NOSPLIT usage (no 4th arg)
+    if table_flow and hasattr(table_flow[-1], "setStyle"):
+        table_flow[-1].setStyle(TableStyle([('NOSPLIT', (0, 0), (-1, -1))]))
+
+    total_h = 0
+    _, ch = caption_para.wrap(doc.width, 10**6); total_h += ch
+    for fl in table_flow:
+        _, fh = fl.wrap(doc.width, 10**6); total_h += fh
+
+    total_h += spacer_after
+    return caption_para, table_flow, total_h
+
+# --- Image helpers -----------------------------------------------------------
+from reportlab.platypus import Image as RLImage, Paragraph
+from reportlab.lib.utils import ImageReader
+from reportlab.lib.units import inch
+
+def make_image_flowables(
+    *,
+    path,                  # file path or file-like
+    caption=None,          # string or None
+    doc=None,
+    styles=None,
+    max_width=None,        # e.g., (doc.width - GUTTER)/2 for inline column; doc.width for full-width
+    max_height=None,       # optional hard cap; defaults to no vertical cap
+    hAlign='CENTER'
+):
+    """
+    Return [caption?, Image] sized to fit max_width (and max_height if given),
+    preserving aspect ratio. Ready to insert into story.
+    """
+    assert doc is not None and styles is not None
+
+    total_w = max_width if max_width is not None else doc.width
+
+    img = RLImage(path)
+    img.hAlign = hAlign
+
+    # Natural pixels
+    iw, ih = float(img.imageWidth), float(img.imageHeight)
+
+    # Constraints
+    max_w = float(total_w)
+    max_h = float(max_height) if max_height else None
+
+    # Compute uniform scale to fit within (max_w, max_h) while preserving aspect
+    if max_h:
+        s = min(max_w / iw, max_h / ih, 1.0 if (iw <= max_w and ih <= max_h) else 10**9)
+    else:
+        s = min(max_w / iw, 1.0 if iw <= max_w else 10**9)
+
+    img.drawWidth  = iw * s
+    img.drawHeight = ih * s
+
+    out = []
+    if caption:
+        out.append(Paragraph(str(caption), styles['TableCaption']))  # reuse your caption style
+    out.append(img)
+    return out
+
+def measure_fullwidth_image_group(
+    *,
+    path,
+    caption_text,
+    doc,
+    styles,
+    max_height=None,           # optional vertical cap for the image itself
+    spacer_after=0.06 * inch   # keep in sync with the Spacer you add after drawing
+):
+    """
+    Build caption + full-width image (no caption inside list),
+    measure total height at doc.width. Returns:
+      (caption_para, [image_only], total_height_pts)
+    """
+    caption_para = Paragraph(caption_text, styles['TableCaption'])
+    image_flow   = make_image_flowables(
+        path=path, caption=None, doc=doc, styles=styles,
+        max_width=doc.width, max_height=max_height, hAlign='CENTER'
+    )
+
+    total_h = 0.0
+    # caption height
+    _, ch = caption_para.wrap(doc.width, 10**6); total_h += ch
+    # image height (the list has exactly one RLImage)
+    for fl in image_flow:
+        _, fh = fl.wrap(doc.width, 10**6); total_h += fh
+
+    total_h += spacer_after
+    return caption_para, image_flow, total_h
 
 # =========================================================
 #  Main builder
@@ -370,6 +513,47 @@ def create_research_paper_pdf(metadata, body_content, references_content, *, out
                 story.append(KeepTogether(glued))
                 story.extend(paras[2:])
             story.append(Spacer(1, 0.06 * inch))
+            
+        elif itype == 'image' and (item.get('placement','inline').lower() == 'inline'):
+            img_path   = item['path']           # or however you store it
+            caption    = item.get('caption')
+            max_h_in   = item.get('max_height_pts')  # optional
+
+            flow = make_image_flowables(
+                path=img_path,
+                caption=caption,
+                doc=doc, styles=styles,
+                max_width=(doc.width - GUTTER) / 2.0,   # column width
+                max_height=max_h_in
+            )
+            # keep together so caption doesn't separate from image
+            story.append(KeepTogether(flow))
+            story.append(Spacer(1, 0.08 * inch))
+            
+        elif itype == 'image' and (item.get('placement','inline').lower() == 'fullwidth'):
+            img_path   = item['path']
+            caption    = item.get('caption') or "Figure"
+            max_h_fw   = item.get('max_height_pts')    # optional; e.g., 4*inch
+
+            cap_para, image_flow, total_h = measure_fullwidth_image_group(
+                path=img_path,
+                caption_text=caption,
+                doc=doc, styles=styles,
+                max_height=max_h_fw,
+                spacer_after=0.06 * inch
+            )
+
+            temp_tpl = make_fullwidth_then_two_col_template(
+                doc, total_h, gutter=GUTTER, onPage=header_footer
+            )
+            doc.addPageTemplates([temp_tpl])
+
+            story.append(NextPageTemplate(temp_tpl.id))
+            story.append(PageBreak())
+            story.append(cap_para)
+            story.extend(image_flow)
+            story.append(Spacer(1, 0.06 * inch))  # already included in total_h
+            story.append(NextPageTemplate("TwoCol"))
 
         elif itype == 'table':
             headers    = item.get('headers', [])
@@ -395,18 +579,29 @@ def create_research_paper_pdf(metadata, body_content, references_content, *, out
                 story.append(Spacer(1, 0.08 * inch))
 
             elif placement == 'fullwidth':
-                story.append(NextPageTemplate("OneColBody"))
-                story.append(PageBreak())
-                flow = make_table_flowables(
-                    headers=headers, rows=rows, caption=caption,
+                if not caption:
+                    base = item.get('title', 'Table')
+                    caption = f"Table {table_counter}. {base}"
+
+                cap_para, table_flow, total_h = measure_fullwidth_table_group(
+                    headers=headers, rows=rows, caption_text=caption,
                     doc=doc, styles=styles, col_widths=col_widths,
-                    # >>> full page text width
-                    max_width=doc.width
+                    spacer_after=0.06 * inch     # << keep this in sync with the Spacer below
                 )
-                story.extend(flow)
-                story.append(Spacer(1, 0.15 * inch))
-                story.append(NextPageTemplate("TwoCol"))
+
+                temp_tpl = make_fullwidth_then_two_col_template(
+                    doc, total_h, gutter=gutter, onPage=header_footer
+                )
+                doc.addPageTemplates([temp_tpl])
+
+                story.append(NextPageTemplate(temp_tpl.id))
                 story.append(PageBreak())
+                story.append(cap_para)
+                story.extend(table_flow)
+                story.append(Spacer(1, 0.06 * inch))  # << already counted in total_h
+
+                story.append(NextPageTemplate("TwoCol"))
+                table_counter += 1
             else:
                 # fallback
                 flow = make_table_flowables(
